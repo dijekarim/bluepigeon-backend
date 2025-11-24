@@ -8,13 +8,11 @@ var env = process.env.NODE_ENV || 'development';
 var config = require(__dirname + '/../config/environment.config')[env];
 var db = {};
 
-if (env === 'development') {
-  var sequelize = new Sequelize(config);
+if (config.use_env_variable) {
+  var sequelize = new Sequelize(process.env[config.use_env_variable]);
 } else {
-  var sequelize = new Sequelize("postgresql://neondb_owner:npg_tSY3yviOGe7s@ep-blue-cherry-adppxxlt-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require");
+  var sequelize = new Sequelize(process.env.DB_URL);
 }
-
-console.log(config);
 
 sequelize
   .authenticate()
