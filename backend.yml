@@ -16,13 +16,13 @@ services:
       - DB_URL=postgresql://postgres:Ss*RBKS^(W+q@postgres/bluepigeon
       - DIALECT=mariadb
     deploy:
-      replicas: 2
+      replicas: 1
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.blupigeon_be.rule=Host(`api.bluepigeon.ikutaja.id`)"
-        - "traefik.http.routers.blupigeon_be.entrypoints=websecure"
-        - "traefik.http.routers.blupigeon_be.tls.certresolver=letsencrypt"
-        - "traefik.http.services.blupigeon_be.loadbalancer.server.port=8080"
+        - "traefik.http.routers.bluepigeon_be.rule=Host(`api.bluepigeon.ikutaja.id`)"
+        - "traefik.http.routers.bluepigeon_be.entrypoints=websecure"
+        - "traefik.http.routers.bluepigeon_be.tls.certresolver=letsencrypt"
+        - "traefik.http.services.bluepigeon_be.loadbalancer.server.port=8080"
 
 networks:
   root_default:
