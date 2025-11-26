@@ -7,14 +7,8 @@ services:
     tty: true
     networks:
       - root_default
-    environment:
-      - NODE_ENV=production
-      - DATABASE=bluepigeon
-      - USERNAME=postgres
-      - PASSWORD=Ss*RBKS^(W+q
-      - HOST=postgres
-      - DB_URL=postgresql://postgres:Ss*RBKS^(W+q@postgres/bluepigeon
-      - DIALECT=mariadb
+    env_file: 
+      - .env
     deploy:
       replicas: 1
       labels:
