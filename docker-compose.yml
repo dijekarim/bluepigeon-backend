@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  app:
+    image: bluepigeon-backend:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - DATABASE=bluepigeon
+      - USERNAME=postgres
+      - PASSWORD=password
+      - HOST=postgres.dijeka.orb.local
+      - DB_URL=postgresql://postgres:password@postgres.dijeka.orb.local/bluepigeon
+      - DIALECT=mariadb
+    networks:
+      - dijeka_default
+
+networks:
+  dijeka_default:
+    external: true

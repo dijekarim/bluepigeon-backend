@@ -1,0 +1,29 @@
+version: "3.7"
+
+services:
+  api:
+    image: bluepigeon-backend:latest
+    stdin_open: true
+    tty: true
+    networks:
+      - root_default
+    environment:
+      - NODE_ENV=production
+      - DATABASE=bluepigeon
+      - USERNAME=postgres
+      - PASSWORD=Ss*RBKS^(W+q
+      - HOST=postgres
+      - DB_URL=postgresql://postgres:Ss*RBKS^(W+q@postgres/bluepigeon
+      - DIALECT=mariadb
+    deploy:
+      replicas: 2
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.blupigeon_be.rule=Host(`api.bluepigeon.ikutaja.id`)"
+        - "traefik.http.routers.blupigeon_be.entrypoints=websecure"
+        - "traefik.http.routers.blupigeon_be.tls.certresolver=letsencrypt"
+        - "traefik.http.services.blupigeon_be.loadbalancer.server.port=8080"
+
+networks:
+  root_default:
+    external: true

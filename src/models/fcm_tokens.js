@@ -23,15 +23,15 @@ module.exports = (sequelize, DataTypes) => {
             defaultValue: DataTypes.NOW
         }
     }, {
-    tableName: 'fcm_tokens',
-    timestamps: false,
-    indexes: [
-        {
-        unique: true,
-        fields: ['user_id', 'token'],
-        name: 'user_token_unique'
-        }
-    ]
+        tableName: 'fcm_tokens',
+        timestamps: false,
+        indexes: [
+            {
+                unique: true,
+                fields: ['user_id', 'token'],
+                name: 'user_token_unique'
+            }
+        ]
     });
 
     return fcm_tokens;
