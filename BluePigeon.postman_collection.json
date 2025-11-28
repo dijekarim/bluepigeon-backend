@@ -1412,6 +1412,473 @@
 					]
 				},
 				{
+					"name": "Channel",
+					"item": [
+						{
+							"name": "Start",
+							"event": [
+								{
+									"listen": "prerequest",
+									"script": {
+										"exec": [
+											"// Pre-request: validate variables and optionally append max_duration_ms",
+											"(function () {",
+											"  const requiredVars = [\"base_url\", \"conversation_id\", \"token\"]; ",
+											"  const missing = requiredVars.filter((k) => !pm.variables.get(k));",
+											"  if (missing.length) {",
+											"    console.error(\"Missing required variables:\", missing.join(\", \"));",
+											"    throw new Error(\"Pre-request validation failed: missing required variables -> \" + missing.join(\", \"));",
+											"  }",
+											"",
+											"  // Log values contextually without printing secrets",
+											"  console.log(\"Start Huddle Session | base_url:\", pm.variables.get(\"base_url\"));",
+											"  console.log(\"Start Huddle Session | conversation_id:\", pm.variables.get(\"conversation_id\"));",
+											"  console.log(\"Start Huddle Session | token present:\", !!pm.variables.get(\"token\"));",
+											"",
+											"  // Optionally append max_duration_ms if present in env/globals/collection/locals",
+											"  let mdRaw = pm.variables.get(\"max_duration_ms\");",
+											"  if (mdRaw !== undefined && mdRaw !== null && mdRaw !== \"\") {",
+											"    let md = parseInt(mdRaw, 10);",
+											"    if (!Number.isFinite(md) || md <= 0) {",
+											"      throw new Error(\"Pre-request validation failed: max_duration_ms must be a positive integer when provided.\");",
+											"    }",
+											"    // Append as query param to request URL (idempotently)",
+											"    let url = new URL(pm.request.url.toString());",
+											"    // Only set if not already present",
+											"    if (!url.searchParams.has(\"max_duration_ms\")) {",
+											"      url.searchParams.set(\"max_duration_ms\", String(md));",
+											"      pm.request.url = url.toString();",
+											"      console.log(\"Appended max_duration_ms to URL:\", md);",
+											"    } else {",
+											"      console.log(\"max_duration_ms already present in URL, leaving as-is:\", url.searchParams.get(\"max_duration_ms\"));",
+											"    }",
+											"  } else {",
+											"    console.log(\"No max_duration_ms provided. Proceeding without optional duration override.\");",
+											"  }",
+											"})();"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								},
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"// Tests: Start Huddle Session validations",
+											"(function () {",
+											"  function isIso8601(str) {",
+											"    if (typeof str !== 'string') return false;",
+											"    const d = new Date(str);",
+											"    return !isNaN(d.getTime()) && /\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z/.test(str);",
+											"  }",
+											"",
+											"  // Basic assertions",
+											"  pm.test(\"Status code is 201\", function () {",
+											"    pm.expect(pm.response.code).to.eql(201);",
+											"  });",
+											"",
+											"  pm.test(\"Response time < 1500ms\", function () {",
+											"    pm.expect(pm.response.responseTime).to.be.below(1500);",
+											"  });",
+											"",
+											"  // Parse JSON",
+											"  let json;",
+											"  pm.test(\"Response is valid JSON\", function () {",
+											"    json = pm.response.json();",
+											"    pm.expect(json).to.be.an('object');",
+											"  });",
+											"",
+											"  // High-level fields",
+											"  pm.test(\"Top-level fields: success===true and created flag present\", function () {",
+											"    pm.expect(json.success).to.eql(true);",
+											"    pm.expect(json).to.have.property('created');",
+											"  });",
+											"",
+											"  // Validate session shape",
+											"  pm.test(\"Session object has required fields\", function () {",
+											"    pm.expect(json).to.have.property('session');",
+											"    const s = json.session;",
+											"    pm.expect(s).to.be.an('object');",
+											"    const required = ['id','context_type','context_id','initiator_id','status','started_at','ends_at','createdAt','updatedAt','participants'];",
+											"    required.forEach(k => pm.expect(s, `missing session.${k}`).to.have.property(k));",
+											"    pm.expect(s.participants).to.be.an('array');",
+											"  });",
+											"",
+											"  // Timestamps & logical constraints",
+											"  pm.test(\"Timestamps are ISO8601 and logical status\", function () {",
+											"    const s = json.session;",
+											"    pm.expect(['active','ended','scheduled']).to.include(s.status);",
+											"    pm.expect(s.status).to.eql('active');",
+											"",
+											"    pm.expect(isIso8601(s.started_at), 'started_at must be ISO 8601').to.eql(true);",
+											"    pm.expect(isIso8601(s.ends_at), 'ends_at must be ISO 8601').to.eql(true);",
+											"    pm.expect(s).to.have.property('ended_at');",
+											"    pm.expect(s.ended_at, 'ended_at should be null when active').to.eql(null);",
+											"",
+											"    const now = Date.now();",
+											"    const endsAt = new Date(s.ends_at).getTime();",
+											"    pm.expect(endsAt, 'ends_at should be in the future').to.be.above(now);",
+											"",
+											"    const mdRaw = pm.variables.get('max_duration_ms');",
+											"    if (mdRaw) {",
+											"      const md = parseInt(mdRaw, 10);",
+											"      if (Number.isFinite(md) && md > 0) {",
+											"        const tolerance = 5000; // 5s tolerance",
+											"        pm.expect(endsAt).to.be.below(now + md + tolerance);",
+											"      }",
+											"    }",
+											"  });",
+											"",
+											"  // Participants validation",
+											"  pm.test(\"Participants array has at least one element with nested user\", function () {",
+											"    const arr = json.session.participants;",
+											"    pm.expect(arr.length).to.be.greaterThan(0);",
+											"    arr.forEach((p, idx) => {",
+											"      pm.expect(p, `participant[${idx}]`).to.be.an('object');",
+											"      const requiredP = ['id','session_id','user_id','status','joined_at','createdAt','updatedAt'];",
+											"      requiredP.forEach(k => pm.expect(p, `missing participant.${k}`).to.have.property(k));",
+											"      pm.expect(isIso8601(p.joined_at), `participant[${idx}].joined_at must be ISO 8601`).to.eql(true);",
+											"      pm.expect(p).to.have.property('user');",
+											"      pm.expect(p.user).to.be.an('object');",
+											"      pm.expect(p.user).to.have.property('id');",
+											"      pm.expect(p.user).to.have.property('email');",
+											"    });",
+											"  });",
+											"",
+											"  // Chain variables to active environment",
+											"  pm.test(\"Chain environment variables for downstream requests\", function () {",
+											"    const s = json.session;",
+											"    pm.environment.set('session_id', s.id);",
+											"    pm.environment.set('huddle_ends_at', s.ends_at);",
+											"    pm.environment.set('huddle_status', s.status);",
+											"    pm.environment.set('huddle_context_id', s.context_id);",
+											"",
+											"    pm.expect(pm.environment.get('session_id')).to.eql(s.id);",
+											"  });",
+											"})();"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "{{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/huddles/channel/{{channel_id}}/start",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"huddles",
+										"channel",
+										"{{channel_id}}",
+										"start"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Join",
+							"event": [
+								{
+									"listen": "prerequest",
+									"script": {
+										"exec": [
+											"// Pre-request script for Join DM Huddle",
+											"// - Validate required variables exist",
+											"// - Optionally override is_muted in raw JSON body using environment variable",
+											"",
+											"(function () {",
+											"  const requiredVars = [",
+											"    { scope: 'variables', key: 'base_url' },",
+											"    { scope: 'variables', key: 'conversation_id' },",
+											"    { scope: 'variables', key: 'invite_token' }",
+											"  ];",
+											"",
+											"  const missing = requiredVars.filter(v => !pm[v.scope].get(v.key));",
+											"",
+											"  pm.test('[Pre] Required variables are present', function () {",
+											"    pm.expect(missing.map(m => m.key), 'Missing vars: ' + missing.map(m => m.key).join(', ')).to.eql([]);",
+											"  });",
+											"",
+											"  // If is_muted env var is defined, coerce it to boolean and inject into raw JSON body",
+											"  const envIsMuted = pm.environment.get('is_muted');",
+											"  if (typeof envIsMuted !== 'undefined' && envIsMuted !== null) {",
+											"    let boolVal;",
+											"    if (typeof envIsMuted === 'boolean') {",
+											"      boolVal = envIsMuted;",
+											"    } else {",
+											"      const s = String(envIsMuted).trim().toLowerCase();",
+											"      boolVal = ['true', '1', 'yes', 'y'].includes(s) ? true : false;",
+											"    }",
+											"",
+											"    try {",
+											"      if (pm.request.body && pm.request.body.mode === 'raw') {",
+											"        const lang = pm.request.body.options && pm.request.body.options.raw && pm.request.body.options.raw.language;",
+											"        if (!lang || lang.toLowerCase() === 'json') {",
+											"          let raw = pm.request.body.raw || '{}';",
+											"          let obj;",
+											"          try { obj = JSON.parse(raw); } catch (e) { obj = {}; }",
+											"          obj.is_muted = boolVal;",
+											"          pm.request.body.update(JSON.stringify(obj));",
+											"        }",
+											"      }",
+											"    } catch (e) {",
+											"      // Non-fatal: surface a pre-request test so users see the reason",
+											"      pm.test('[Pre] Inject is_muted into raw JSON body', function () {",
+											"        throw e;",
+											"      });",
+											"    }",
+											"  }",
+											"})();"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								},
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"// Tests for Join DM Huddle - Post-response",
+											"// Covers: status code, response time, schema validation, essential fields, timestamp formats,",
+											"// logical constraints, variable chaining, and conditional negative tests guidance.",
+											"",
+											"(function () {",
+											"  const is2xx = (code) => code >= 200 && code < 300;",
+											"  const isISO8601 = (s) => typeof s === 'string' && /^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z)$/.test(s);",
+											"",
+											"  // Basic status/time tests",
+											"  pm.test('[Join DM Huddle] Status is 2xx', function () {",
+											"    pm.expect(is2xx(pm.response.code), `Expected 2xx but got ${pm.response.code}`).to.be.true;",
+											"  });",
+											"",
+											"  pm.test('[Join DM Huddle] Response time < 1500 ms', function () {",
+											"    pm.expect(pm.response.responseTime).to.be.below(1500);",
+											"  });",
+											"",
+											"  // Parse JSON safely",
+											"  let json;",
+											"  pm.test('[Join DM Huddle] Response is valid JSON', function () {",
+											"    json = pm.response.json();",
+											"    pm.expect(json).to.be.an('object');",
+											"  });",
+											"",
+											"  if (!json) return;",
+											"",
+											"  // Top-level fields",
+											"  pm.test('[Join DM Huddle] Top-level fields exist', function () {",
+											"    pm.expect(json).to.have.property('success');",
+											"    if (json.success) {",
+											"      pm.expect(json).to.have.property('session');",
+											"    }",
+											"  });",
+											"",
+											"  // Conditional block: run deep tests only when success = true",
+											"  if (json && json.success === true) {",
+											"    const session = json.session || {};",
+											"",
+											"    // Lightweight JSON \"schema\" validations",
+											"    pm.test('[Join DM Huddle] Session shape', function () {",
+											"      pm.expect(session).to.be.an('object');",
+											"      pm.expect(session).to.include.all.keys('id', 'context_type', 'context_id', 'initiator_id', 'status', 'started_at', 'ends_at', 'ended_at', 'ended_reason', 'createdAt', 'updatedAt', 'participants');",
+											"      pm.expect(session.id).to.be.a('string').and.not.empty;",
+											"      pm.expect(session.context_type).to.be.a('string');",
+											"      pm.expect(session.context_id).to.be.a('string');",
+											"      pm.expect(session.initiator_id).to.be.a('string');",
+											"      pm.expect(session.status).to.be.a('string');",
+											"      pm.expect(session.participants).to.be.an('array');",
+											"    });",
+											"",
+											"    pm.test('[Join DM Huddle] Session timestamps are ISO 8601', function () {",
+											"      ['started_at', 'ends_at', 'ended_at', 'createdAt', 'updatedAt'].forEach(k => {",
+											"        const v = session[k];",
+											"        if (v === null) {",
+											"          pm.expect(v, `${k} may be null`).to.eql(null);",
+											"        } else {",
+											"          pm.expect(isISO8601(v), `${k} should be ISO 8601 with milliseconds and Z`).to.be.true;",
+											"        }",
+											"      });",
+											"    });",
+											"",
+											"    pm.test('[Join DM Huddle] Logical constraints for active status', function () {",
+											"      if (session.status === 'active') {",
+											"        pm.expect(session.started_at, 'active => started_at not null').to.be.a('string');",
+											"        pm.expect(session.ended_at, 'active => ended_at null').to.eql(null);",
+											"      }",
+											"    });",
+											"",
+											"    // Participants validation",
+											"    pm.test('[Join DM Huddle] Participants array shape', function () {",
+											"      pm.expect(session.participants).to.be.an('array');",
+											"      session.participants.forEach((p, idx) => {",
+											"        pm.expect(p, `participant[${idx}]`).to.include.all.keys('id', 'session_id', 'user_id', 'status', 'joined_at', 'left_at', 'is_muted', 'createdAt', 'updatedAt', 'user');",
+											"        pm.expect(p.id).to.be.a('string');",
+											"        pm.expect(p.session_id).to.eql(session.id);",
+											"        pm.expect(p.user_id).to.be.a('string');",
+											"        pm.expect(p.status).to.be.a('string');",
+											"        pm.expect(typeof p.is_muted).to.eql('boolean');",
+											"        // timestamp checks",
+											"        ['joined_at', 'left_at', 'createdAt', 'updatedAt'].forEach(k => {",
+											"          const v = p[k];",
+											"          if (v === null) {",
+											"            pm.expect(v, `${k} may be null`).to.eql(null);",
+											"          } else {",
+											"            pm.expect(isISO8601(v), `participant.${k} should be ISO 8601`).to.be.true;",
+											"          }",
+											"        });",
+											"        // user object",
+											"        pm.expect(p.user).to.be.an('object');",
+											"        pm.expect(p.user).to.have.property('id');",
+											"        pm.expect(p.user.id).to.be.a('string');",
+											"      });",
+											"    });",
+											"",
+											"    // Variable chaining for follow-up",
+											"    pm.test('[Join DM Huddle] Save variables for chaining', function () {",
+											"      pm.environment.set('session_id', session.id);",
+											"      pm.environment.set('huddle_ends_at', session.ends_at);",
+											"      pm.expect(pm.environment.get('session_id')).to.eql(session.id);",
+											"    });",
+											"  } else {",
+											"    // Negative tests guidance: mark as skipped information only",
+											"    pm.test('[Join DM Huddle] Skipped deep validations (success=false)', function () {",
+											"      pm.expect(json && json.success).to.eql(true);",
+											"    });",
+											"  }",
+											"})();"
+										],
+										"type": "text/javascript",
+										"packages": {},
+										"requests": {}
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "{{invite_token}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"is_muted\": false\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/huddles/channel/{{channel_id}}/join",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"huddles",
+										"channel",
+										"{{channel_id}}",
+										"join"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Leave",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "{{token}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"is_muted\": false\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/huddles/channel/{{channel_id}}/leave",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"huddles",
+										"channel",
+										"{{channel_id}}",
+										"leave"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "List",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "{{token}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"is_muted\": false\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/huddles/channel/{{channel_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"huddles",
+										"channel",
+										"{{channel_id}}"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
 					"name": "Terminate",
 					"request": {
 						"method": "POST",
