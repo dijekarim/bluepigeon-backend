@@ -58,6 +58,18 @@ BluePigeon-Backend is the repository for the backend code of Blue Pigeon, a voic
 - Refer to the provided Postman collection for detailed endpoint testing.
 - Key endpoints include those for starting/joining huddles, signaling, and session management.
 
+## **Postman Collection**
+The Postman collection for testing the API endpoints is available in the repository: [BluePigeon.postman_collection.json](./BluePigeon.postman_collection.json)
+
+### **How to Import the Collection into Postman**
+1. Download or locate the `BluePigeon.postman_collection.json` file from the repository root.
+2. Open the Postman application on your computer.
+3. Click on the "Import" button in the top left corner of the Postman interface.
+4. In the Import window, select the "File" tab.
+5. Click "Select Files" and choose the `BluePigeon.postman_collection.json` file.
+6. Click "Import" to load the collection into Postman.
+7. The collection will now be available in your Postman workspace for testing the API endpoints.
+
 ## **Contributing**
 - Push completed code to the provided GitHub repository.
 - If needed, reference existing codebase for Features 2 and 3.
